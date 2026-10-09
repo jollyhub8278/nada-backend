@@ -23,6 +23,7 @@ public class App {
         );
 
         server.createContext("/people", App::handlePeople);
+        server.createContext("/people/", App::handlePersonContacts);
         server.createContext("/knows", App::handleKnows);
 
         server.start();
@@ -126,6 +127,56 @@ public class App {
                     "{\"error\":\"invalid JSON request\"}");
         }
     }
+
+private static void handlePersonContacts(HttpExchange exchange)
+        throws IOException {
+
+    if (!exchange.getRequestMethod().equals("GET")) {
+        exchange.getResponseHeaders().set("Allow", "GET");
+        sendJson(exchange, 405,
+                "{\"error\":\"method not allowed\"}");
+        return;
+    }
+
+    String path = exchange.getRequestURI().getPath();
+    String prefix = "/people/";
+    String suffix = "/contacts";
+
+    if (!path.startsWith(prefix) || !path.endsWith(suffix)) {
+        sendJson(exchange, 404, "{\"error\":\"not found\"}");
+        return;
+    }
+
+    String idText = path.substring(
+            prefix.length(),
+            path.length() - suffix.length()
+    );
+
+    final int id;
+
+    try {
+        id = Integer.parseInt(idText);
+    } catch (NumberFormatException exception) {
+        sendJson(exchange, 400,
+                "{\"error\":\"invalid person ID\"}");
+        return;
+    }
+
+    if (!store.knowsPerson(id)) {
+        sendJson(exchange, 404,
+                "{\"error\":\"person not found\"}");
+        return;
+    }
+
+    var contactIds = store.getContactIds(id);
+    var result = new java.util.ArrayList<Person>();
+
+    for (int contactId : contactIds) {
+        result.add(store.getPerson(contactId));
+    }
+
+    sendJson(exchange, 200, gson.toJson(result));
+}
 
     private static boolean isInteger(
             com.google.gson.JsonElement element) {
