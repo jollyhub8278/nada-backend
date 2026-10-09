@@ -25,6 +25,7 @@ public class App {
         server.createContext("/people", App::handlePeople);
         server.createContext("/people/", App::handlePersonContacts);
         server.createContext("/knows", App::handleKnows);
+        server.createContext("/path", App::handlePath);
 
         server.start();
 
@@ -32,6 +33,89 @@ public class App {
                 "Nada API running on http://localhost:8080"
         );
     }
+
+    
+private static void handlePath(HttpExchange exchange)
+        throws IOException {
+
+    if (!exchange.getRequestMethod().equals("GET")) {
+        exchange.getResponseHeaders().set("Allow", "GET");
+        sendJson(exchange, 405,
+                "{\"error\":\"method not allowed\"}");
+        return;
+    }
+
+    String query = exchange.getRequestURI().getQuery();
+
+    if (query == null) {
+        sendJson(exchange, 400,
+                "{\"error\":\"from and to are required\"}");
+        return;
+    }
+
+    String fromText = null;
+    String toText = null;
+
+    for (String parameter : query.split("&")) {
+        String[] parts = parameter.split("=", 2);
+
+        if (parts.length == 2) {
+            if (parts[0].equals("from")) {
+                fromText = parts[1];
+            } else if (parts[0].equals("to")) {
+                toText = parts[1];
+            }
+        }
+    }
+
+    final int from;
+    final int to;
+
+    try {
+        if (fromText == null || toText == null) {
+            throw new NumberFormatException();
+        }
+
+        from = Integer.parseInt(fromText);
+        to = Integer.parseInt(toText);
+
+    } catch (NumberFormatException exception) {
+        sendJson(exchange, 400,
+                "{\"error\":\"from and to must be integer IDs\"}");
+        return;
+    }
+
+    if (!store.knowsPerson(from) || !store.knowsPerson(to)) {
+        sendJson(exchange, 404,
+                "{\"error\":\"person not found\"}");
+        return;
+    }
+
+    PathFinder finder = new PathFinder(store);
+
+    var path = finder.findShortestPath(from, to, 3);
+
+    if (path.isEmpty()) {
+        sendJson(exchange, 200,
+                "{\"connected\":false}");
+        return;
+    }
+
+    var response = new java.util.LinkedHashMap<String, Object>();
+    response.put("connected", true);
+    response.put("hops", path.size() - 1);
+
+    var peopleOnPath = new java.util.ArrayList<Person>();
+
+    for (int id : path) {
+        peopleOnPath.add(store.getPerson(id));
+    }
+
+    response.put("path", peopleOnPath);
+
+    sendJson(exchange, 200, gson.toJson(response));
+}
+
 
     private static void handlePeople(HttpExchange exchange)
             throws IOException {
